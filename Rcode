@@ -1,817 +1,577 @@
 #-----------------------------------------------------------------------------------------
-# R CODE for "Urban gardening as a health strategy in the Pacific Islands facing obesity crisis"
+# R CODE for "Urban gardening and its associations with diet and health in Palau facing an obesity crisis"
 #-----------------------------------------------------------------------------------------
- 
+
 #----------------------------------------------
-# STEP 1 Data setting
+# STEP 1: Data Setup and Preparation
 #----------------------------------------------
 
-# Start by putting directory
-setwd("your/working/directory")
+# Set working directory (Please update to your local path)
+# setwd("path/to/your/directory")
 
-# Load the following packages
-library(mice); library(naniar); library(dplyr); library(tidyr); library(summarytools)
+# Load required packages
+library(mice)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(purrr)
 
-# Setting up data frame
-d <- read.csv("your/working/data.csv", header=TRUE, sep = ",", stringsAsFactors=FALSE)
+# Load dataset
+d <- read.csv("260726_data_edit_HG_Diet_Health.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
 
-# Study population data that was used for statistical analyses are not publicly available. Only those who have registered as co-researchers in the research ethical approval can handle the data. To request access to the data, contact the corresponding author, A.I.
+# Set variable types
+d <- d %>%
+  select(
+    HG.O, HG.VW, Health2, Sex, Edu, Occu, 
+    Grain2, Taro2, Meat2, Fish2, Egg2, Dairy2, 
+    Vegetables2, Seaweed2, Beans2, Nuts2, Fruits2, 
+    UrbanKA, Palauan,
+    Age, BMI, FDSKsome
+  ) %>%
+  mutate(
+    across(c(HG.O, HG.VW, Health2, Sex, Edu, Occu, 
+             Grain2, Taro2, Meat2, Fish2, Egg2, Dairy2, 
+             Vegetables2, Seaweed2, Beans2, Nuts2, Fruits2, 
+             UrbanKA, Palauan), as.factor),
+    across(c(Age, BMI, FDSKsome), as.numeric)
+  )
 
-# Setting variable types
-d <- d %>% mutate(across(c(HG.O, HG.VW, Health2, Sex, Edu, Occu, Grain2, Taro2, Meat2, Fish2, Egg2, Dairy2, Vegetables2, Seaweed2, Beans2, Nuts2, Fruits2, UrbanKA, Palauan), as.factor), across(c(Age, BMI, FDSKsome), as.numeric))
+# Subset data to include urban Palauans only (exclude rural residents and non-Palauans)
+d <- subset(d, Palauan == 1)
+d <- subset(d, UrbanKA == 1)
 
-# Normalize control variable (Age)
-d$Age <- (d$Age - min(d$Age, na.rm = TRUE)) / (max(d$Age, na.rm = TRUE) - min(d$Age, na.rm = TRUE))
+# Min-Max normalize Age to a 0–1 scale
+d <- d %>%
+  mutate(Age = (Age - min(Age, na.rm = TRUE)) / (max(Age, na.rm = TRUE) - min(Age, na.rm = TRUE)))
 
-# Subset to urban Palauans only (exclude rural and non-Palauans)
-d <- subset(d,Palauan == 1)
-d <- subset(d,UrbanKA == 1)
+summary(d)
 
-# Summary Statistics (Supplementary Table 1)
-dfSummary(d)
+# Select variables required for analysis
+d <- d[, c("Age", "Sex", "Edu", "Occu", "HG.O", "HG.VW", "BMI", "FDSKsome", "Health2", 
+           "Grain2", "Taro2", "Egg2", "Dairy2", "Vegetables2", "Seaweed2", "Beans2", "Nuts2", "Fruits2", "Meat2", "Fish2")]
 
-# Count and calculate proportion of missing values
-sum(is.na(d)) 
+head(d)
+sum(is.na(d)) # Total count of missing values
+nrow(d)       # Total rows (N = 181)
+ncol(d)       # Total columns (20 variables)
 na_percentage_total <- mean(is.na(d)) * 100; print(na_percentage_total)
- 
+
+# Create output directory automatically if it does not exist
+if (!dir.exists("outputs")) dir.create("outputs")
+
+
 #----------------------------------------------
-# STEP 2 Cross tabulation 
+# STEP 2: Cross-tabulation & Visualizations
 #----------------------------------------------
- 
-# Garden ownership and Gardening status (Figure 1a)
+
+# 1. Garden ownership and Gardening status (Figure 1a)
 d.Garden <- with(d, table(HG.VW, HG.O)) %>% as.data.frame()
 colnames(d.Garden) <- c("GardeningStatus", "GardenOwnership", "Count")
- 
-d.Garden$GardeningStatus <- factor(d.Garden$GardeningStatus,
-                                    levels = c("0", "1"),
-                                    labels = c("Non-gardener", "Gardener"))
-d.Garden$GardenOwnership <- factor(d.Garden$GardenOwnership,
-                                    levels = c("0", "1"),
-                                    labels = c("Not own a garden", "Own a garden"))
- 
+
+d.Garden$GardeningStatus <- factor(d.Garden$GardeningStatus, levels = c("0", "1"), labels = c("Non-gardener", "Gardener"))
+d.Garden$GardenOwnership <- factor(d.Garden$GardenOwnership, levels = c("0", "1"), labels = c("Not own a garden", "Own a garden"))
+
 d.Garden <- d.Garden %>%
-  group_by(GardenOwnership) %>%
-  mutate(Percent = Count / sum(Count),
-         Label = scales::percent(Percent, accuracy = 0.1))
- 
+  group_by(GardenOwnership) %>%
+  mutate(Percent = Count / sum(Count), Label = scales::percent(Percent, accuracy = 0.1))
+
 ggplot(d.Garden, aes(x = GardenOwnership, y = Percent, fill = GardeningStatus)) +
-  geom_bar(stat = "identity", width = 0.8, color = "white") +
-  geom_text(aes(label = Label), position = position_stack(vjust = 0.5),
-            color = "white", size = 3) +
-  scale_fill_manual(values = c("lightgray", "#66bd63")) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
-  labs(x = "", y = "", fill = "Gardening Status") +
-  theme_minimal() +
+  geom_bar(stat = "identity", width = 0.8, color = "white") +
+  geom_text(aes(label = Label), position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  scale_fill_manual(values = c("lightgray", "#66bd63")) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  labs(x = "", y = "", fill = "Gardening Status") +
+  theme_minimal() +
   theme(
-    legend.position = "right",
-    legend.text = element_text(size = 12),
-    legend.key.width = unit(0.5, "cm"),
-    legend.title = element_text(size = 12),
-    axis.text.x = element_text(size = 13, color = "black"),
-    axis.text.y = element_text(size = 13),
-    axis.title = element_text(size = 13),
-    plot.title = element_text(size = 13, hjust = 0.5),
+    legend.position = "right", legend.text = element_text(size = 12),
+    legend.key.width = unit(0.5, "cm"), legend.title = element_text(size = 12),
+    axis.text.x = element_text(size = 13, color = "black"), axis.text.y = element_text(size = 13),
+    axis.title = element_text(size = 13), plot.title = element_text(size = 13, hjust = 0.5),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  )
+ggsave("outputs/plot_Gardener.pdf", width = 5, height = 3)
+
+
+# 2. Body Mass Index (BMI) categories (Figure 1b)
+d_clean_bmi <- d %>% 
+  filter(!is.na(HG.VW), !is.na(BMI)) %>%
+  mutate(
+    HG.VW = factor(HG.VW, levels = c(0, 1), labels = c("Non-gardener", "Gardener")),
+    BMICategory = cut(BMI, breaks = c(-Inf, 24.999, 29.999, 34.999, 39.999, Inf),
+                      labels = c("18.5-24.9", "25-29.9", "30-34.9", "35-39.9", "Over40"), right = TRUE)
+  )
+
+plot_data_bmi <- d_clean_bmi %>%
+  count(HG.VW, BMICategory) %>%
+  group_by(HG.VW) %>%
+  mutate(proportion = n / sum(n), label = scales::percent(proportion, accuracy = 0.1))
+
+custom_colors_bmi <- c("18.5-24.9" = "#f3ba44", "25-29.9" = "#66bd63", "30-34.9" = "#00a497", "35-39.9" = "#2171b5", "Over40" = "#08306b")
+
+ggplot(plot_data_bmi, aes(x = HG.VW, y = proportion, fill = BMICategory)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.8, color = "white") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  scale_fill_manual(values = custom_colors_bmi) +
+  labs(x = "", y = "", fill = "BMI Category") +
+  theme_minimal() +
+  theme(
+    legend.position = "right", legend.text = element_text(size = 12),
+    legend.key.width = unit(1.7, "cm"), legend.title = element_text(size = 12),
+    axis.text.x = element_text(size = 13, color = "black"), axis.text.y = element_text(size = 13),
+    axis.title = element_text(size = 13), plot.title = element_text(size = 13, hjust = 0.5),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  )
+ggsave("outputs/plot_BMI.pdf", width = 5, height = 3)
+
+
+# 3. FDSK-11 score distribution (Figure 1c)
+d_clean_fdsk <- d %>% 
+  filter(!is.na(HG.VW), !is.na(FDSKsome)) %>%
+  mutate(
+    HG.VW = factor(HG.VW, levels = c(0, 1), labels = c("Non-gardener", "Gardener")),
+    FDSKsome = factor(FDSKsome, levels = as.character(5:11))
+  )
+
+plot_data_fdsk <- d_clean_fdsk %>%
+  count(HG.VW, FDSKsome) %>%
+  group_by(HG.VW) %>%
+  mutate(proportion = n / sum(n), label = scales::percent(proportion, accuracy = 0.1))
+
+custom_colors_fdsk <- c("5" = "#08306b", "6" = "#2171b5", "7" = "#4eb3d3", "8" = "#a6d96a", "9" = "#d9ef8b", "10" = "#f9d548", "11" = "#f3bc49")
+
+ggplot(plot_data_fdsk, aes(x = HG.VW, y = proportion, fill = FDSKsome)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.8, color = "white") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  scale_fill_manual(values = custom_colors_fdsk) +
+  labs(x = "", y = "", fill = "FDSK-11 Score") +
+  theme_minimal() +
+  theme(
+    legend.position = "right", legend.text = element_text(size = 12),
+    legend.key.width = unit(1.5, "cm"), legend.title = element_text(size = 12),
+    axis.text.x = element_text(size = 13, color = "black"), axis.text.y = element_text(size = 13),
+    axis.title = element_text(size = 13), plot.title = element_text(size = 13, hjust = 0.5),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  )
+ggsave("outputs/plot_FDSK.pdf", width = 5, height = 3)
+
+
+# 4. Self-reported health status (Figure 1d)
+d.Garden_health <- with(d, table(HG.VW, Health2)) %>% as.data.frame()
+colnames(d.Garden_health) <- c("GardeningStatus", "Health", "Count")
+
+d.Garden_health$GardeningStatus <- factor(d.Garden_health$GardeningStatus, levels = c("0", "1"), labels = c("Non-gardener", "Gardener"))
+d.Garden_health$Health <- factor(d.Garden_health$Health, levels = c("0", "1"), labels = c("Less than Good", "Good"))
+
+d.Garden_health <- d.Garden_health %>%
+  group_by(GardeningStatus) %>%
+  mutate(Percent = Count / sum(Count), Label = scales::percent(Percent, accuracy = 0.1))
+
+ggplot(d.Garden_health, aes(x = GardeningStatus, y = Percent, fill = Health)) +
+  geom_bar(stat = "identity", width = 0.8, color = "white") +
+  geom_text(aes(label = Label), position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  scale_fill_manual(values = c("lightgray", "#f3ba44")) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  labs(x = "", y = "", fill = "Self-reported health") +
+  theme_minimal() +
+  theme(
+    legend.position = "right", legend.key.width = unit(0.5, "cm"),
+    legend.text = element_text(size = 12), legend.title = element_text(size = 12),
+    axis.text.x = element_text(size = 13, color = "black"), axis.text.y = element_text(size = 13),
+    axis.title = element_text(size = 13), plot.title = element_text(size = 13, hjust = 0.5),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  )
+ggsave("outputs/plot_Health.pdf", width = 5, height = 3) 
+
+
+#----------------------------------------------
+# STEP 3: Multiple Imputation (MICE)
+#----------------------------------------------
+
+d_miced <- mice(d, m = 20, maxit = 50, method = "pmm", seed = 1234)
+save(d_miced, file = "260726_d_miced_basic.Rdata") 
+load(file = "260726_d_miced_basic.Rdata") 
+
+
+#----------------------------------------------
+# STEP 4: Regression Analyses (Models 1–6)
+# Order: FDSK-11 (Models 1 & 4) -> BMI (Models 2 & 5) -> Self-reported Health (Models 3 & 6)
+#----------------------------------------------
+
+# ============================================
+# Model 1: FDSK-11 ~ Gardening Status (HG.VW)
+# ============================================
+miced_FDSK_m1 <- with(data = d_miced, lm(FDSKsome ~ Age + Sex + Edu + Occu + HG.VW))
+miced_pool_FDSK_m1 <- pool(miced_FDSK_m1)
+aic_m1 <- mean(sapply(miced_FDSK_m1$analyses, AIC))
+
+summary_miced_pool_FDSK_m1 <- summary(miced_pool_FDSK_m1, conf.int = TRUE, conf.level = 0.95) %>%
+  add_row(term = "AIC", estimate = aic_m1)
+write.csv(summary_miced_pool_FDSK_m1, "outputs/summary_miced_pool_FDSK_m1.csv", row.names = TRUE)
+
+plot_data_m1 <- summary_miced_pool_FDSK_m1 %>%
+  filter(!term %in% c("(Intercept)", "AIC")) %>%
+  mutate(
+    sig = case_when(p.value < 0.001 ~ "***", p.value < 0.01 ~ "**", p.value < 0.05 ~ "*", p.value < 0.1 ~ ".", TRUE ~ ""),
+    var_group = case_when(
+      grepl("Age", term) ~ "Age", grepl("Sex", term) ~ "Sex", grepl("Edu", term) ~ "Education",
+      grepl("Occu", term) ~ "Employment", grepl("HG.VW", term) ~ "Gardening status", TRUE ~ term
+    )
+  ) %>%
+  group_by(var_group) %>% slice(1) %>% ungroup() %>%
+  mutate(
+    var_group = factor(var_group, levels = c("Age", "Sex", "Education", "Employment", "Gardening status")),
+    color = if_else(var_group == "Gardening status", "#66bd63", "gray60")
+  ) %>% filter(!is.na(var_group))
+
+p_model1 <- ggplot(plot_data_m1, aes(x = var_group, y = estimate)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = color), width = 0.2, linewidth = 0.8) +
+  geom_point(aes(color = color), size = 3.5) +
+  geom_text(aes(y = conf.high, label = sig), vjust = -0.5, size = 5, color = "#08306b") +
+  coord_flip() + scale_color_identity() + theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(size = 12, color = "black"),
+    axis.text.y = element_text(size = 12, color = "black", face = "bold"),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  ) +
+  labs(x = "", y = expression("Estimate (" * beta * ")"), title = "")
+print(p_model1)
+ggsave("outputs/model1_plot.pdf", plot = p_model1, width = 5, height = 5)
+
+
+# ============================================
+# Model 2: BMI ~ Gardening Status (HG.VW)
+# ============================================
+miced_BMI_m2 <- with(data = d_miced, lm(BMI ~ Age + Sex + Edu + Occu + HG.VW))
+miced_pool_BMI_m2 <- pool(miced_BMI_m2)
+aic_m2 <- mean(sapply(miced_BMI_m2$analyses, AIC))
+
+summary_miced_pool_BMI_m2 <- summary(miced_pool_BMI_m2, conf.int = TRUE, conf.level = 0.95) %>%
+  add_row(term = "AIC", estimate = aic_m2)
+write.csv(summary_miced_pool_BMI_m2, "outputs/summary_miced_pool_BMI_m2.csv", row.names = TRUE)
+
+plot_data_m2 <- summary_miced_pool_BMI_m2 %>%
+  filter(!term %in% c("(Intercept)", "AIC")) %>%
+  mutate(
+    sig = case_when(p.value < 0.001 ~ "***", p.value < 0.01 ~ "**", p.value < 0.05 ~ "*", p.value < 0.1 ~ ".", TRUE ~ ""),
+    var_group = case_when(
+      grepl("Age", term) ~ "Age", grepl("Sex", term) ~ "Sex", grepl("Edu", term) ~ "Education",
+      grepl("Occu", term) ~ "Employment", grepl("HG.VW", term) ~ "Gardening status", TRUE ~ term
+    )
+  ) %>%
+  group_by(var_group) %>% slice(1) %>% ungroup() %>%
+  mutate(
+    var_group = factor(var_group, levels = c("Age", "Sex", "Education", "Employment", "Gardening status")),
+    color = if_else(var_group == "Gardening status", "#66bd63", "gray60")
+  ) %>% filter(!is.na(var_group))
+
+p_model2 <- ggplot(plot_data_m2, aes(x = var_group, y = estimate)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = color), width = 0.2, linewidth = 0.8) +
+  geom_point(aes(color = color), size = 3.5) +
+  geom_text(aes(y = conf.high, label = sig), vjust = -0.5, size = 5, color = "#08306b") +
+  coord_flip() + scale_color_identity() + theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(size = 12, color = "black"),
+    axis.text.y = element_text(size = 12, color = "black", face = "bold"),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  ) +
+  labs(x = "", y = expression("Estimate (" * beta * ")"), title = "")
+print(p_model2)
+ggsave("outputs/model2_plot.pdf", plot = p_model2, width = 5, height = 5)
+
+
+# ============================================
+# Model 3: Self-reported health (Health2) ~ Gardening Status (HG.VW)
+# ============================================
+miced_Health2_m3 <- with(data = d_miced, glm(Health2 ~ Age + Sex + Edu + Occu + HG.VW, family = binomial))
+miced_pool_Health2_m3 <- pool(miced_Health2_m3)
+aic_m3 <- mean(sapply(miced_Health2_m3$analyses, AIC))
+
+summary_miced_pool_Health2_m3 <- summary(miced_pool_Health2_m3, conf.int = TRUE, conf.level = 0.95) %>%
+  mutate(OR = exp(estimate), OR_low = exp(conf.low), OR_high = exp(conf.high)) %>%
+  add_row(term = "AIC", estimate = aic_m3)
+write.csv(summary_miced_pool_Health2_m3, "outputs/summary_miced_pool_Health2_m3.csv", row.names = TRUE)
+
+plot_data_m3 <- summary_miced_pool_Health2_m3 %>%
+  filter(!term %in% c("(Intercept)", "AIC")) %>%
+  mutate(
+    sig = case_when(p.value < 0.001 ~ "***", p.value < 0.01 ~ "**", p.value < 0.05 ~ "*", p.value < 0.1 ~ ".", TRUE ~ ""),
+    var_group = case_when(
+      grepl("Age", term) ~ "Age", grepl("Sex", term) ~ "Sex", grepl("Edu", term) ~ "Education",
+      grepl("Occu", term) ~ "Employment", grepl("HG.VW", term) ~ "Gardening status", TRUE ~ term
+    )
+  ) %>%
+  group_by(var_group) %>% slice(1) %>% ungroup() %>%
+  mutate(
+    var_group = factor(var_group, levels = c("Age", "Sex", "Education", "Employment", "Gardening status")),
+    color = if_else(var_group == "Gardening status", "#66bd63", "gray60")
+  ) %>% filter(!is.na(var_group))
+
+p_model3 <- ggplot(plot_data_m3, aes(x = var_group, y = OR)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray40") +
+  geom_errorbar(aes(ymin = OR_low, ymax = OR_high, color = color), width = 0.2, linewidth = 0.8) +
+  geom_point(aes(color = color), size = 3.5) +
+  geom_text(aes(y = OR_high, label = sig), vjust = -0.5, size = 5, color = "#08306b") +
+  coord_flip() + scale_y_log10() + scale_color_identity() + theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(size = 12, color = "black"),
+    axis.text.y = element_text(size = 12, color = "black", face = "bold"),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  ) +
+  labs(x = "", y = "Odds Ratio (OR, log scale)", title = "")
+print(p_model3)
+ggsave("outputs/model3_plot.pdf", plot = p_model3, width = 5, height = 5)
+
+
+# ============================================
+# Model 4: FDSK-11 ~ Garden Ownership (HG.O) + Gardening Status (HG.VW)
+# ============================================
+miced_FDSK_m4 <- with(data = d_miced, lm(FDSKsome ~ Age + Sex + Edu + Occu + HG.O + HG.VW))
+miced_pool_FDSK_m4 <- pool(miced_FDSK_m4)
+aic_m4 <- mean(sapply(miced_FDSK_m4$analyses, AIC))
+
+summary_miced_pool_FDSK_m4 <- summary(miced_pool_FDSK_m4, conf.int = TRUE, conf.level = 0.95) %>%
+  add_row(term = "AIC", estimate = aic_m4)
+write.csv(summary_miced_pool_FDSK_m4, "outputs/summary_miced_pool_FDSK_HG.O+HG.VW_m4.csv", row.names = TRUE)
+
+plot_data_m4 <- summary_miced_pool_FDSK_m4 %>%
+  filter(!term %in% c("(Intercept)", "AIC")) %>%
+  mutate(
+    sig = case_when(p.value < 0.001 ~ "***", p.value < 0.01 ~ "**", p.value < 0.05 ~ "*", p.value < 0.1 ~ ".", TRUE ~ ""),
+    var_group = case_when(
+      grepl("Age", term) ~ "Age", grepl("Sex", term) ~ "Sex", grepl("Edu", term) ~ "Education",
+      grepl("Occu", term) ~ "Employment", grepl("HG.O", term) ~ "Garden ownership",
+      grepl("HG.VW", term) ~ "Gardening status", TRUE ~ term
+    )
+  ) %>%
+  group_by(var_group) %>% slice(1) %>% ungroup() %>%
+  mutate(
+    var_group = factor(var_group, levels = c("Age", "Sex", "Education", "Employment", "Garden ownership", "Gardening status")),
+    color = case_when(var_group == "Garden ownership" ~ "#f3ba44", var_group == "Gardening status" ~ "#66bd63", TRUE ~ "gray60")
+  ) %>% filter(!is.na(var_group))
+
+p_model4 <- ggplot(plot_data_m4, aes(x = var_group, y = estimate)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = color), width = 0.2, linewidth = 0.8) +
+  geom_point(aes(color = color), size = 3.5) +
+  geom_text(aes(y = conf.high, label = sig), vjust = -0.5, size = 5, color = "#08306b") +
+  coord_flip() + scale_color_identity() + theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(size = 12, color = "black"),
+    axis.text.y = element_text(size = 12, color = "black", face = "bold"),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  ) +
+  labs(x = "", y = expression("Estimate (" * beta * ")"), title = "")
+print(p_model4)
+ggsave("outputs/model4_plot.pdf", plot = p_model4, width = 5, height = 5)
+
+
+# ============================================
+# Model 5: BMI ~ Garden Ownership (HG.O) + Gardening Status (HG.VW)
+# ============================================
+miced_BMI_m5 <- with(data = d_miced, lm(BMI ~ Age + Sex + Edu + Occu + HG.O + HG.VW))
+miced_pool_BMI_m5 <- pool(miced_BMI_m5)
+aic_m5 <- mean(sapply(miced_BMI_m5$analyses, AIC))
+
+summary_miced_pool_BMI_m5 <- summary(miced_pool_BMI_m5, conf.int = TRUE, conf.level = 0.95) %>%
+  add_row(term = "AIC", estimate = aic_m5)
+write.csv(summary_miced_pool_BMI_m5, "outputs/summary_miced_pool_BMI_HG.O+HG.VW_m5.csv", row.names = TRUE)
+
+plot_data_m5 <- summary_miced_pool_BMI_m5 %>%
+  filter(!term %in% c("(Intercept)", "AIC")) %>%
+  mutate(
+    sig = case_when(p.value < 0.001 ~ "***", p.value < 0.01 ~ "**", p.value < 0.05 ~ "*", p.value < 0.1 ~ ".", TRUE ~ ""),
+    var_group = case_when(
+      grepl("Age", term) ~ "Age", grepl("Sex", term) ~ "Sex", grepl("Edu", term) ~ "Education",
+      grepl("Occu", term) ~ "Employment", grepl("HG.O", term) ~ "Garden ownership",
+      grepl("HG.VW", term) ~ "Gardening status", TRUE ~ term
+    )
+  ) %>%
+  group_by(var_group) %>% slice(1) %>% ungroup() %>%
+  mutate(
+    var_group = factor(var_group, levels = c("Age", "Sex", "Education", "Employment", "Garden ownership", "Gardening status")),
+    color = case_when(var_group == "Garden ownership" ~ "#f3ba44", var_group == "Gardening status" ~ "#66bd63", TRUE ~ "gray60")
+  ) %>% filter(!is.na(var_group))
+
+p_model5 <- ggplot(plot_data_m5, aes(x = var_group, y = estimate)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high, color = color), width = 0.2, linewidth = 0.8) +
+  geom_point(aes(color = color), size = 3.5) +
+  geom_text(aes(y = conf.high, label = sig), vjust = -0.5, size = 5, color = "#08306b") +
+  coord_flip() + scale_color_identity() + theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(size = 12, color = "black"),
+    axis.text.y = element_text(size = 12, color = "black", face = "bold"),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  ) +
+  labs(x = "", y = expression("Estimate (" * beta * ")"), title = "")
+print(p_model5)
+ggsave("outputs/model5_plot.pdf", plot = p_model5, width = 5, height = 5)
+
+
+# ============================================
+# Model 6: Self-reported health ~ Garden Ownership (HG.O) + Gardening Status (HG.VW)
+# ============================================
+miced_Health2_m6 <- with(data = d_miced, glm(Health2 ~ Age + Sex + Edu + Occu + HG.O + HG.VW, family = binomial))
+miced_pool_Health2_m6 <- pool(miced_Health2_m6)
+aic_m6 <- mean(sapply(miced_Health2_m6$analyses, AIC))
+
+summary_miced_pool_Health2_m6 <- summary(miced_pool_Health2_m6, conf.int = TRUE, conf.level = 0.95) %>%
+  mutate(OR = exp(estimate), OR_low = exp(conf.low), OR_high = exp(conf.high)) %>%
+  add_row(term = "AIC", estimate = aic_m6)
+write.csv(summary_miced_pool_Health2_m6, "outputs/summary_miced_pool_Health2_HG.O+HG.VW_m6.csv", row.names = TRUE)
+
+plot_data_m6 <- summary_miced_pool_Health2_m6 %>%
+  filter(!term %in% c("(Intercept)", "AIC")) %>%
+  mutate(
+    sig = case_when(p.value < 0.001 ~ "***", p.value < 0.01 ~ "**", p.value < 0.05 ~ "*", p.value < 0.1 ~ ".", TRUE ~ ""),
+    var_group = case_when(
+      grepl("Age", term) ~ "Age", grepl("Sex", term) ~ "Sex", grepl("Edu", term) ~ "Education",
+      grepl("Occu", term) ~ "Employment", grepl("HG.O", term) ~ "Garden ownership",
+      grepl("HG.VW", term) ~ "Gardening status", TRUE ~ term
+    )
+  ) %>%
+  group_by(var_group) %>% slice(1) %>% ungroup() %>%
+  mutate(
+    var_group = factor(var_group, levels = c("Age", "Sex", "Education", "Employment", "Garden ownership", "Gardening status")),
+    color = case_when(var_group == "Garden ownership" ~ "#f3ba44", var_group == "Gardening status" ~ "#66bd63", TRUE ~ "gray60")
+  ) %>% filter(!is.na(var_group))
+
+p_model6 <- ggplot(plot_data_m6, aes(x = var_group, y = OR)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray40") +
+  geom_errorbar(aes(ymin = OR_low, ymax = OR_high, color = color), width = 0.2, linewidth = 0.8) +
+  geom_point(aes(color = color), size = 3.5) +
+  geom_text(aes(y = OR_high, label = sig), vjust = -0.5, size = 5, color = "#08306b") +
+  coord_flip() + scale_y_log10() + scale_color_identity() + theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(size = 12, color = "black"),
+    axis.text.y = element_text(size = 12, color = "black", face = "bold"),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  ) +
+  labs(x = "", y = "Odds Ratio (OR, log scale)", title = "")
+print(p_model6)
+ggsave("outputs/model6_plot.pdf", plot = p_model6, width = 5, height = 5)
+
+
+# ============================================
+# Step 4.7: Regression Analyses for Individual Food Items (11 Foods)
+# ============================================
+foods_all <- c("Grain2", "Meat2", "Fish2", "Taro2", "Vegetables2", 
+               "Fruits2", "Beans2", "Nuts2", "Seaweed2", "Dairy2", "Egg2")
+
+for (food in foods_all) {
+  # Skip Grain2 due to complete separation (quasi-complete separation)
+  if (food == "Grain2") {
+    cat("Skipped: Grain2 (Model 1a) - Nearly all participants consumed grains.\n")
+    next
+  }
+  
+  f <- as.formula(paste(food, "~ Age + Sex + Edu + Occu + HG.VW"))
+  
+  fit_list <- lapply(1:d_miced$m, function(i) {
+    df_imputed <- complete(d_miced, action = i)
+    glm(f, data = df_imputed, family = binomial)
+  })
+  
+  mean_aic <- mean(sapply(fit_list, AIC))
+  
+  res <- summary(pool(fit_list), conf.int = TRUE, conf.level = 0.95) %>%
+    mutate(OR = exp(estimate), OR_low = exp(conf.low), OR_high = exp(conf.high)) %>%
+    mutate(
+      OR = if_else(std.error > 10, NA_real_, OR),
+      OR_low = if_else(std.error > 10, NA_real_, OR_low),
+      OR_high = if_else(std.error > 10, NA_real_, OR_high)
+    ) %>%
+    add_row(term = "AIC", estimate = mean_aic)
+  
+  out_name <- paste0("summary_miced_pool_FDSK", food, ".csv")
+  write.csv(res, file.path("outputs", out_name), row.names = TRUE)
+  
+  cat("Completed:", food, "(Mean AIC:", round(mean_aic, 2), ") -> outputs/", out_name, "\n")
+}
+
+
+# ============================================
+# Step 4.8: Combined Forest Plot for Food Items (Excluding Grain2)
+# ============================================
+
+# 1. Extract and combine odds ratios for Gardening Status (HG.VW) across all food models
+combined_food_data <- lapply(foods_all, function(food) {
+  file_path <- file.path("outputs", paste0("summary_miced_pool_FDSK", food, ".csv"))
+  
+  if (file.exists(file_path)) {
+    df <- read.csv(file_path)
+    df_sub <- df %>% 
+      filter(grepl("HG.VW", term)) %>% 
+      mutate(
+        food_item = food,
+        sig = case_when(p.value < 0.001 ~ "***", p.value < 0.01 ~ "**", p.value < 0.05 ~ "*", p.value < 0.1 ~ ".", TRUE ~ "")
+      )
+    return(df_sub)
+  } else {
+    return(NULL)
+  }
+}) %>% bind_rows()
+
+# 2. Format labels and reorder food groups for visualization
+combined_food_data <- combined_food_data %>%
+  filter(food_item != "Grain2") %>%
+  mutate(
+    food_label = case_when(
+      food_item == "Taro2"       ~ "Taro & Tubers",
+      food_item == "Meat2"       ~ "Meat",
+      food_item == "Fish2"       ~ "Fish & Seafood",
+      food_item == "Egg2"        ~ "Eggs",
+      food_item == "Dairy2"      ~ "Dairy",
+      food_item == "Vegetables2" ~ "Vegetables",
+      food_item == "Seaweed2"    ~ "Seaweed",
+      food_item == "Beans2"      ~ "Beans & Pulses",
+      food_item == "Nuts2"       ~ "Nuts & Seeds",
+      food_item == "Fruits2"     ~ "Fruits",
+      TRUE                       ~ food_item
+    ),
+    food_label = factor(food_label, levels = rev(c(
+      "Taro & Tubers", "Meat", "Fish & Seafood", 
+      "Eggs", "Dairy", "Vegetables", "Seaweed", 
+      "Beans & Pulses", "Nuts & Seeds", "Fruits"
+    )))
+  )
+
+# 3. Render combined forest plot for 10 food groups
+p_foods_all <- ggplot(combined_food_data, aes(x = food_label, y = OR)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "gray40") +
+  geom_errorbar(aes(ymin = OR_low, ymax = OR_high), width = 0.25, linewidth = 0.8, color = "#66bd63") +
+  geom_point(size = 3.5, color = "#66bd63") +
+  geom_text(aes(y = OR_high, label = sig), hjust = -0.3, vjust = 0.7, size = 5, color = "#08306b") +
+  coord_flip() +
+  scale_y_log10() +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(size = 12, color = "black"),
+    axis.text.y = element_text(size = 12, color = "black", face = "bold"),
     panel.background = element_rect(fill = "grey95", color = NA),
     panel.grid.major = element_line(color = "white"),
     panel.grid.minor = element_line(color = "white")
+  ) +
+  labs(
+    x = "", 
+    y = "Odds Ratio (OR, log scale) for Gardening Status", 
+    title = ""
   )
 
-ggsave("outputs/plot_Gardener.pdf", width = 5, height = 3)
- 
-# BMI (Figure 1b)
-d_clean <- d %>% filter(!is.na(HG.VW), !is.na(BMICategory)) %>%
-  mutate(HG.VW = factor(HG.VW, levels = c(0, 1), labels = c("Non-gardener", "Gardener")),
-         BMICategory = factor(BMICategory, levels = c("18.5-24.9", "25-29.9", "30-34.9", "35-39.9", "Over40")))
- 
- 
-plot_data <- d_clean %>%
-  count(HG.VW, BMICategory) %>%
-  group_by(HG.VW) %>%
-  mutate(proportion = n / sum(n),
-         label = scales::percent(proportion, accuracy = 0.1))
- 
-custom_colors <- c(
-  "18.5-24.9" = "#f3ba44",  # light green
-  "25-29.9"   = "#66bd63",  # medium green
-  "30-34.9"   = "#00a497",  # clear blue (your request)
-  "35-39.9"   = "#2171b5",  # deeper blue
-  "Over40"    = "#08306b"   # navy blue
-)
- 
-ggplot(plot_data, aes(x = HG.VW, y = proportion, fill = BMICategory)) +
-  geom_bar(stat = "identity", position = "stack", width = 0.8, color = "white") +
-  geom_text(aes(label = label), position = position_stack(vjust = 0.5),
-            color = "white", size = 3) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
-  scale_fill_manual(values = custom_colors) +
-  labs(x = "", y = "", fill = "BMI Category") +
-  theme_minimal() +
-  theme(
-    legend.position = "right",
-    legend.text = element_text(size = 12),
-    legend.key.width = unit(1.7, "cm"),
-    legend.title = element_text(size = 12),
-    axis.text.x = element_text(size = 13, color = "black"),
-    axis.text.y = element_text(size = 13),
-    axis.title = element_text(size = 13),
-    plot.title = element_text(size = 13, hjust = 0.5),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"),
-    panel.grid.minor = element_line(color = "white")
-  )
- 
-ggsave("outputs/plot_BMI.pdf", width = 5, height = 3)
- 
-# FDSK-11 (Figure 1c)
-d_clean <- d %>% filter(!is.na(HG.VW), !is.na(FDSKsome)) %>%
-  mutate(HG.VW = factor(HG.VW, levels = c(0, 1), labels = c("Non-gardener", "Gardener")),
-         FDSKsome = factor(FDSKsome, levels = as.character(5:11)))
- 
-plot_data <- d_clean %>%
-  count(HG.VW, FDSKsome) %>%
-  group_by(HG.VW) %>%
-  mutate(proportion = n / sum(n),
-         label = scales::percent(proportion, accuracy = 0.1))
- 
-custom_colors <- c(
-  "5"  = "#08306b",  # dark navy blue
-  "6"  = "#2171b5",  # deep blue
-  "7"  = "#4eb3d",  # teal blue
-  "8"  = "#a6d96a",  # light green
-  "9"  = "#d9ef8b",  # yellow green
-  "10" = "#f9d548",  # golden yellow
-  "11" = "#f3bc49"   # Nature Food yellow
-)
- 
- 
-ggplot(plot_data, aes(x = HG.VW, y = proportion, fill = FDSKsome)) +
-  geom_bar(stat = "identity", position = "stack", width = 0.8, color = "white") +
-  geom_text(aes(label = label), position = position_stack(vjust = 0.5),
-            color = "white", size = 3) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
-  scale_fill_manual(values = custom_colors) +
-  labs(x = "", y = "", fill = "FDSK-11 Score") +
-  theme_minimal() +
-  theme(
-    legend.position = "right",
-    legend.text = element_text(size = 12),
-    legend.key.width = unit(1.5, "cm"),
-    legend.title = element_text(size = 12),
-    axis.text.x = element_text(size = 13, color = "black"),
-    axis.text.y = element_text(size = 13),
-    axis.title = element_text(size = 13),
-    plot.title = element_text(size = 13, hjust = 0.5),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"),
-    panel.grid.minor = element_line(color = "white")
-  )
- 
-ggsave("outputs/plot_FDSK.pdf", width = 5, height = 3)
- 
-# Self-reported health (Figure 1d)
-d.Garden <- with(d, table(HG.VW, Health2)) %>% as.data.frame()
-colnames(d.Garden) <- c("GardeningStatus", "Health", "Count")
- 
-d.Garden$GardeningStatus <- factor(d.Garden$GardeningStatus,
-                                    levels = c("0", "1"),
-                                    labels = c("Non-gardener", "Gardener"))
-d.Garden$Health <- factor(d.Garden$Health,
-                           levels = c("0", "1"),
-                           labels = c("Less than Good", "Good"))
- 
-d.Garden <- d.Garden %>%
-  group_by(GardeningStatus) %>%
-  mutate(Percent = Count / sum(Count),
-         Label = scales::percent(Percent, accuracy = 0.1))
- 
-ggplot(d.Garden, aes(x = GardeningStatus, y = Percent, fill = Health)) +
-  geom_bar(stat = "identity", width = 0.8, color = "white") +
-  geom_text(aes(label = Label), position = position_stack(vjust = 0.5),
-            color = "white", size = 3) +
-  scale_fill_manual(values = c("lightgray", "#f3ba44")) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
-  labs(x = "", y = "", fill = "Self-reported health") +
-  theme_minimal() +
-  theme(
-    legend.position = "right",
-    legend.key.width = unit(0.5, "cm"),
-    legend.text = element_text(size = 12),
-    legend.title = element_text(size = 12),
-    axis.text.x = element_text(size = 13, color = "black"),
-    axis.text.y = element_text(size = 13),
-    axis.title = element_text(size = 13),
-    plot.title = element_text(size = 13, hjust = 0.5),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"),
-    panel.grid.minor = element_line(color = "white")
-  )
- 
-ggsave("outputs/plot_Health.pdf", width = 5, height = 3)
-
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
-# Step 3 Multiple imputation by Chained equations (MICE)
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
- 
-# MICE 
-d_miced <- mice(d, m = 20, maxit = 50, method = "pmm", seed = 1234)
-
-# Count missing values
-sum(is.na(d_miced)) 
-
-# Save imputed dataset
-save(d_miced, file = "250418_d_miced_basic.Rdata") 
-
-# Load saved imputed dataset
-load(file = "250418_d_miced_basic.Rdata") 
-
- 
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
-# Step 4.1 Regression analysis (Model 1)
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
- 
-# Model 1: Linear regression with BMI as the dependent variable (Supplementary Table 3)
-miced_BMI <- with(data = d_miced, lm(BMI  ~ Age + Sex + Edu + Occu + HG.VW))
-miced_pool_BMI <- pool(miced_BMI)
-summary(miced_pool_BMI)
-summary_miced_pool_BMI <- summary(miced_pool_BMI)
-write.csv(summary_miced_pool_BMI, "summary_miced_pool_BMI.csv", row.names = TRUE)
- 
-# Create plot for Model 1 (Figure 2a)
-summary_miced_pool_BMI$term <- rownames(summary_miced_pool_BMI)
- 
-summary_miced_pool_BMI <- summary_miced_pool_BMI %>%
-  mutate(
-    conf.low = estimate - 1.96 * std.error,
-    conf.high = estimate + 1.96 * std.error,
-    sig = case_when(
-      p.value < 0.001 ~ "***",
-      p.value < 0.01  ~ "**",
-      p.value < 0.05  ~ "*",
-      p.value < 0.1   ~ ".",
-      TRUE            ~ ""
-    )
-  )
- 
-summary_miced_pool_BMI_no_intercept <- summary_miced_pool_BMI %>%
-  filter(term != "1")
- 
-fixed_order <- c("6", "5", "4", "3", "2")
- 
-summary_miced_pool_BMI_no_intercept <- summary_miced_pool_BMI_no_intercept %>%
-  filter(term %in% fixed_order) %>%
-  mutate(term = factor(term, levels = fixed_order))
- 
-label_map <- c("2" = "Age", "3" = "Sex", "4" = "Education",
-               "5" = "Employment", "6" = "Gardening status")
- 
-summary_miced_pool_BMI_no_intercept <- summary_miced_pool_BMI_no_intercept %>%
-  mutate(color = ifelse(term == "6", "#66bd63", "gray60"))
- 
-summary_miced_pool_BMI_no_intercept <- summary_miced_pool_BMI_no_intercept %>%
-  mutate(
-    color = ifelse(term == "6", "#66bd63", "gray60"),
-    point_size = ifelse(term == "6", 6, 4),     
-    bar_size = ifelse(term == "6", 2, 1)     
-  )
- 
-ggplot(summary_miced_pool_BMI_no_intercept,
-       aes(x = term, y = estimate)) +
-  geom_point(aes(color = color, size = point_size)) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high,
-                    color = color, size = bar_size),
-                width = 0.2) +
-  geom_text(aes(label = sig), vjust = -1.5, size = 5, color = "#08306b") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-  coord_flip() +
-  scale_x_discrete(labels = label_map) +
-  scale_color_identity() +
-  scale_size_identity() +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_text(size = 13),
-    axis.text.y = element_text(size = 13),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"),
-    panel.grid.minor = element_line(color = "white")
-  ) +
-  labs(
-    x = "",
-    y = expression("Estimate (" * beta * ")"), 
-    title = ""
-  )
- 
-ggsave("outputs/model1_plot.pdf", width = 5, height = 5)
- 
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
-# Step 4.2 Regression analysis (Model 2)
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
- 
-# Model 2: Linear regression with FDSK-11 as the dependent variable (Supplementary Table 3)
-miced_FDSKsome <- with(data = d_miced, lm(FDSKsome  ~ Age + Sex + Edu + Occu + HG.VW))
-miced_pool_FDSKsome <- pool(miced_FDSKsome)
-summary(miced_pool_FDSKsome)# HG.VW1 0.8649532 p=7.007586e-04
-summary_miced_pool_FDSKsome <- summary(miced_pool_FDSKsome)
-write.csv(summary_miced_pool_FDSKsome, "summary_miced_pool_FDSKsome.csv", row.names = TRUE) 
- 
-# Create plot for Model 2 (Figure 2b)
-summary_miced_pool_FDSKsome$term <- rownames(summary_miced_pool_FDSKsome)
- 
-summary_miced_pool_FDSKsome <- summary_miced_pool_FDSKsome %>%
-  mutate(
-    conf.low = estimate - 1.96 * std.error,
-    conf.high = estimate + 1.96 * std.error,
-    sig = case_when(
-      p.value < 0.001 ~ "***",
-      p.value < 0.01  ~ "**",
-      p.value < 0.05  ~ "*",
-      p.value < 0.1   ~ ".",
-      TRUE            ~ ""
-    )
-  )
- 
-summary_miced_pool_FDSKsome_no_intercept <- summary_miced_pool_FDSKsome %>%
-  filter(term != "1")
- 
-fixed_order <- c("6", "5", "4", "3", "2")
- 
-summary_miced_pool_FDSKsome_no_intercept <- summary_miced_pool_FDSKsome_no_intercept %>%
-  filter(term %in% fixed_order) %>%
-  mutate(term = factor(term, levels = fixed_order))
- 
-label_map <- c("2" = "Age", "3" = "Sex", "4" = "Education",
-               "5" = "Employment", "6" = "Gardening status")
- 
-summary_miced_pool_FDSKsome_no_intercept <- summary_miced_pool_FDSKsome_no_intercept %>%
-  mutate(color = ifelse(term == "6", "#66bd63", "gray60"))
- 
- 
-summary_miced_pool_FDSKsome_no_intercept <- summary_miced_pool_FDSKsome_no_intercept %>%
-  mutate(
-    color = ifelse(term == "6", "#66bd63", "gray60"),
-    point_size = ifelse(term == "6", 6, 4),     
-    bar_size = ifelse(term == "6", 2, 1)     
-  )
- 
-ggplot(summary_miced_pool_FDSKsome_no_intercept,
-       aes(x = term, y = estimate)) +
-  geom_point(aes(color = color, size = point_size)) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high,
-                    color = color, size = bar_size),
-                width = 0.2) +
-  geom_text(aes(label = sig), vjust = -1.5, size = 5, color = "#08306b") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-  coord_flip() +
-  scale_x_discrete(labels = label_map) +
-  scale_color_identity() +
-  scale_size_identity() +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_text(size = 13),
-    axis.text.y = element_text(size = 13),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"),
-    panel.grid.minor = element_line(color = "white")
-  ) +
-  labs(
-    x = "",
-    y = expression("Estimate (" * beta * ")"),  
-    title = ""
-  )
- 
-ggsave("outputs/model2_plot.pdf", width = 5, height = 5)
- 
- 
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
-# Step 4.3 Regression analysis (Model 3)
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
- 
-# Model 3: Logistic regression with self-reported health as the dependent variable (Supplementary Table 3)
-miced_Health2 <- with(data = d_miced, glm(Health2  ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Health2 <- pool(miced_Health2)
-summary(miced_pool_Health2)# HG.VW P=0.0005008412***
-summary_miced_pool_Health2 <- summary(miced_pool_Health2)
-write.csv(summary_miced_pool_Health2, "summary_miced_pool_Health2.csv", row.names = TRUE)
- 
-# Create plot for Model 3 (Figure 2c)
-summary_miced_pool_Health2$term <- rownames(summary_miced_pool_Health2)
- 
-summary_miced_pool_Health2 <- summary_miced_pool_Health2 %>%
-  mutate(
-    conf.low = estimate - 1.96 * std.error,
-    conf.high = estimate + 1.96 * std.error,
-    sig = case_when(
-      p.value < 0.001 ~ "***",
-      p.value < 0.01  ~ "**",
-      p.value < 0.05  ~ "*",
-      p.value < 0.1   ~ ".",
-      TRUE            ~ ""
-    )
-  )
- 
-summary_miced_pool_Health2_no_intercept <- summary_miced_pool_Health2 %>%
-  filter(term != "1")
- 
-fixed_order <- c("6", "5", "4", "3", "2")
- 
-summary_miced_pool_Health2_no_intercept <- summary_miced_pool_Health2_no_intercept %>%
-  filter(term %in% fixed_order) %>%
-  mutate(term = factor(term, levels = fixed_order))
- 
-label_map <- c("2" = "Age", "3" = "Sex", "4" = "Education",
-               "5" = "Employment", "6" = "Gardening status")
- 
-summary_miced_pool_Health2_no_intercept <- summary_miced_pool_Health2_no_intercept %>%
-  mutate(color = ifelse(term == "6", "#66bd63", "gray60"))
- 
-summary_miced_pool_Health2_no_intercept <- summary_miced_pool_Health2_no_intercept %>%
-  mutate(
-    color = ifelse(term == "6", "#66bd63", "gray60"),
-    point_size = ifelse(term == "6", 6, 4),      # 点のサイズ
-    bar_size = ifelse(term == "6", 2, 1)   
-  )
- 
-ggplot(summary_miced_pool_Health2_no_intercept,
-       aes(x = term, y = estimate)) +
-  geom_point(aes(color = color, size = point_size)) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high,
-                    color = color, size = bar_size),
-                width = 0.2) +
-  geom_text(aes(label = sig), vjust = -1.5, size = 5, color = "#08306b") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-  coord_flip() +
-  scale_x_discrete(labels = label_map) +
-  scale_color_identity() +
-  scale_size_identity() +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_text(size = 13),
-    axis.text.y = element_text(size = 13),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"),
-    panel.grid.minor = element_line(color = "white")
-  ) +
-  labs(
-    x = "",
-    y = expression("Estimate (" * beta * ")"),  
-    title = ""
-  )
- 
-ggsave("outputs/model3_plot.pdf", width = 5, height = 5)
-      
- 
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
-# Step 4.4 Regression analysis (Model 4)
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
- 
-# Model 4: Linear regression with BMI as the dependent variable (Supplementary Table 5)
-miced_BMI <- with(data = d_miced, lm(BMI  ~ Age + Sex + Edu + Occu + HG.O + HG.VW))
-miced_pool_BMI <- pool(miced_BMI)
-summary(miced_pool_BMI)# HG.VW 2.171857e-02*
-summary_miced_pool_BMI <- summary(miced_pool_BMI)
-write.csv(summary_miced_pool_BMI, "summary_miced_pool_BMI_HG.O+HG.VW.csv", row.names = TRUE)
- 
-# Create plot for Model 4 (Figure 2d)
-summary_miced_pool_BMI$term <- rownames(summary_miced_pool_BMI)
- 
-summary_miced_pool_BMI <- summary_miced_pool_BMI %>%
-  mutate(
-    conf.low = estimate - 1.96 * std.error,
-    conf.high = estimate + 1.96 * std.error,
-    sig = case_when(
-      p.value < 0.001 ~ "***",
-      p.value < 0.01  ~ "**",
-      p.value < 0.05  ~ "*",
-      p.value < 0.1   ~ ".",
-      TRUE            ~ ""
-    )
-  )
- 
-summary_miced_pool_BMI_no_intercept <- summary_miced_pool_BMI %>%
-  filter(term != "1")
- 
-fixed_order <- c("7", "6", "5", "4", "3", "2")
- 
-summary_miced_pool_BMI_no_intercept <- summary_miced_pool_BMI_no_intercept %>%
-  filter(term %in% fixed_order) %>%
-  mutate(term = factor(term, levels = fixed_order))
- 
-label_map <- c("2" = "Age", "3" = "Sex", "4" = "Education",
-               "5" = "Employment", "6" = "Garden ownership", "7" = "Gardening status")
- 
- 
-summary_miced_pool_BMI_no_intercept <- summary_miced_pool_BMI_no_intercept %>%
-  mutate(color = ifelse(term == "6", "#f3ba44", "gray60"))
-summary_miced_pool_BMI_no_intercept <- summary_miced_pool_BMI_no_intercept %>%
-  mutate(color = ifelse(term == "7", "#66bd63", "gray60"))
- 
-summary_miced_pool_BMI_no_intercept <- summary_miced_pool_BMI_no_intercept %>%
-  mutate(
-    color = case_when(
-      term == "6" ~ "#f3ba44",  # Garden ownership
-      term == "7" ~ "#66bd63",  # Gardening status
-      TRUE        ~ "gray60"  
-    ),
-    point_size = case_when(
-      term == "6" ~ 6,
-      term == "7" ~ 6,
-      TRUE        ~ 4
-    ),
-    bar_size = case_when(
-      term == "6" ~ 2,
-      term == "7" ~ 2,
-      TRUE        ~ 1
-    )
-  )
- 
-ggplot(summary_miced_pool_BMI_no_intercept,
-       aes(x = term, y = estimate)) +
-  geom_point(aes(color = color, size = point_size)) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high,
-                    color = color, size = bar_size),
-                width = 0.2) +
-  geom_text(aes(label = sig), vjust = -1.5, size = 5, color = "#08306b") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-  coord_flip() +
-  scale_x_discrete(labels = label_map) +
-  scale_color_identity() +
-  scale_size_identity() +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_text(size = 13),
-    axis.text.y = element_text(size = 13),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"),
-    panel.grid.minor = element_line(color = "white")
-  ) +
-  labs(
-    x = "",
-    y = expression("Estimate (" * beta * ")"),  
-    title = ""
-  )
- 
-ggsave("outputs/model4_plot.pdf", width = 5, height = 5)
- 
- 
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
-# Step 4.5 Regression analysis (Model 5)
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
- 
-# Model 5: Linear regression with FDSK-11 as the dependent variable (Supplementary Table 5)
-miced_FDSKsome <- with(data = d_miced, lm(FDSKsome  ~ Age + Sex + Edu + Occu + HG.O + HG.VW))
-miced_pool_FDSKsome <- pool(miced_FDSKsome)
-summary(miced_pool_FDSKsome)# HG.VW 1.038862e-02*
-summary_miced_pool_FDSKsome <- summary(miced_pool_FDSKsome)
-write.csv(summary_miced_pool_FDSKsome, "summary_miced_pool_FDSKsome_HG.O+HG.VW.csv", row.names = TRUE)
- 
-# Create plot for Model 5 (Figure 2e)
-summary_miced_pool_FDSKsome$term <- rownames(summary_miced_pool_FDSKsome)
- 
-summary_miced_pool_FDSKsome <- summary_miced_pool_FDSKsome %>%
-  mutate(
-    conf.low = estimate - 1.96 * std.error,
-    conf.high = estimate + 1.96 * std.error,
-    sig = case_when(
-      p.value < 0.001 ~ "***",
-      p.value < 0.01  ~ "**",
-      p.value < 0.05  ~ "*",
-      p.value < 0.1   ~ ".",
-      TRUE            ~ ""
-    )
-  )
- 
-summary_miced_pool_FDSKsome_no_intercept <- summary_miced_pool_FDSKsome %>%
-  filter(term != "1")
- 
-fixed_order <- c("7", "6", "5", "4", "3", "2")
- 
-summary_miced_pool_FDSKsome_no_intercept <- summary_miced_pool_FDSKsome_no_intercept %>%
-  filter(term %in% fixed_order) %>%
-  mutate(term = factor(term, levels = fixed_order))
- 
-label_map <- c("2" = "Age", "3" = "Sex", "4" = "Education",
-               "5" = "Employment", "6" = "Garden ownership", "7" = "Gardening status")
- 
-summary_miced_pool_FDSKsome_no_intercept <- summary_miced_pool_FDSKsome_no_intercept %>%
-  mutate(color = ifelse(term == "6", "#f3ba44", "gray60"))
-summary_miced_pool_FDSKsome_no_intercept <- summary_miced_pool_FDSKsome_no_intercept %>%
-  mutate(color = ifelse(term == "7", "#66bd63", "gray60"))
- 
-summary_miced_pool_FDSKsome_no_intercept <- summary_miced_pool_FDSKsome_no_intercept %>%
-  mutate(
-    color = case_when(
-      term == "6" ~ "#f3ba44",  # Garden ownership
-      term == "7" ~ "#66bd63",  # Gardening status
-      TRUE        ~ "gray60"    
-    ),
-    point_size = case_when(
-      term == "6" ~ 6,
-      term == "7" ~ 6,
-      TRUE        ~ 4
-    ),
-    bar_size = case_when(
-      term == "6" ~ 2,
-      term == "7" ~ 2,
-      TRUE        ~ 1
-    )
-  )
- 
-ggplot(summary_miced_pool_FDSKsome_no_intercept,
-       aes(x = term, y = estimate)) +
-  geom_point(aes(color = color, size = point_size)) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high,
-                    color = color, size = bar_size),
-                width = 0.2) +
-  geom_text(aes(label = sig), vjust = -1.5, size = 5, color = "#08306b") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-  coord_flip() +
-  scale_x_discrete(labels = label_map) +
-  scale_color_identity() +
-  scale_size_identity() +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_text(size = 13),
-    axis.text.y = element_text(size = 13),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"),
-    panel.grid.minor = element_line(color = "white")
-  ) +
-  labs(
-    x = "",
-    y = expression("Estimate (" * beta * ")"),
-    title = ""
-  )
- 
-ggsave("outputs/model5_plot.pdf", width = 5, height = 5)
- 
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
-# Step 4.6 Regression analysis (Model 6)
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
- 
-# Model 6: Logistic regression with self-reported health as the dependent variable (Supplementary Table 5)
-miced_Health2 <- with(data = d_miced, glm(Health2  ~ Age + Sex + Edu + Occu + HG.O + HG.VW, family=binomial))
-miced_pool_Health2 <- pool(miced_Health2)
-summary(miced_pool_Health2)# HG.VW 0.0008660425***
-summary_miced_pool_Health2 <- summary(miced_pool_Health2)
-write.csv(summary_miced_pool_Health2, "summary_miced_pool_Health2_HG.O+HG.VW.csv", row.names = TRUE)
- 
-# Create plot for Model 6 (Figure 2f)
-summary_miced_pool_Health2$term <- rownames(summary_miced_pool_Health2)
- 
-summary_miced_pool_Health2 <- summary_miced_pool_Health2 %>%
-  mutate(
-    conf.low = estimate - 1.96 * std.error,
-    conf.high = estimate + 1.96 * std.error,
-    sig = case_when(
-      p.value < 0.001 ~ "***",
-      p.value < 0.01  ~ "**",
-      p.value < 0.05  ~ "*",
-      p.value < 0.1   ~ ".",
-      TRUE            ~ ""
-    )
-  )
- 
-summary_miced_pool_Health2_no_intercept <- summary_miced_pool_Health2 %>%
-  filter(term != "1")
- 
-fixed_order <- c("7", "6", "5", "4", "3", "2")
- 
-summary_miced_pool_Health2_no_intercept <- summary_miced_pool_Health2_no_intercept %>%
-  filter(term %in% fixed_order) %>%
-  mutate(term = factor(term, levels = fixed_order))
- 
-label_map <- c("2" = "Age", "3" = "Sex", "4" = "Education",
-               "5" = "Employment", "6" = "Garden ownership", "7" = "Gardening status")
- 
-summary_miced_pool_Health2_no_intercept <- summary_miced_pool_Health2_no_intercept %>%
-  mutate(color = ifelse(term == "6", "#f3ba44", "gray60"))
-summary_miced_pool_Health2_no_intercept <- summary_miced_pool_Health2_no_intercept %>%
-  mutate(color = ifelse(term == "7", "#66bd63", "gray60"))
- 
-summary_miced_pool_Health2_no_intercept <- summary_miced_pool_Health2_no_intercept %>%
-  mutate(
-    color = case_when(
-      term == "6" ~ "#f3ba44",  # Garden ownership
-      term == "7" ~ "#66bd63",  # Gardening status
-      TRUE        ~ "gray60"  
-    ),
-    point_size = case_when(
-      term == "6" ~ 6,
-      term == "7" ~ 6,
-      TRUE        ~ 4
-    ),
-    bar_size = case_when(
-      term == "6" ~ 2,
-      term == "7" ~ 2,
-      TRUE        ~ 1
-    )
-  )
- 
-ggplot(summary_miced_pool_Health2_no_intercept,
-       aes(x = term, y = estimate)) +
-  geom_point(aes(color = color, size = point_size)) +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high,
-                    color = color, size = bar_size),
-                width = 0.2) +
-  geom_text(aes(label = sig), vjust = -1.5, size = 5, color = "#08306b") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-  coord_flip() +
-  scale_x_discrete(labels = label_map) +
-  scale_color_identity() +
-  scale_size_identity() +
-  theme_minimal(base_size = 12) +
-  theme(
-    axis.text.x = element_text(size = 13),
-    axis.text.y = element_text(size = 13),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"),
-    panel.grid.minor = element_line(color = "white")
-  ) +
-  labs(
-    x = "",
-    y = expression("Estimate (" * beta * ")"),  
-    title = ""
-  )
- 
-ggsave("outputs/model6_plot.pdf", width = 5, height = 5)
- 
- 
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
-# Step 4.7 Regression analysis (Models 4a-4k) (Supplementary Table 4)
-#＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
- 
-# Model 4a
-miced_Grain2 <- with(data = d_miced, glm(Grain2  ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Grain2 <- pool(miced_Grain2)
-summary(miced_pool_Grain2)
-summary_miced_pool_Grain2 <- summary(miced_pool_Grain2)
-write.csv(summary_miced_pool_Grain2, "summary_miced_pool_FDSKGrain2.csv", row.names = TRUE)
- 
-# Model 4b
-miced_Meat2 <- with(data = d_miced, glm(Meat2 ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Meat2 <- pool(miced_Meat2)
-summary(miced_pool_Meat2)
-summary_miced_pool_Meat2 <- summary(miced_pool_Meat2)
-write.csv(summary_miced_pool_Meat2, "summary_miced_pool_FDSKMeat2.csv", row.names = TRUE)
- 
-# Model 4c
-miced_Fish2 <- with(data = d_miced, glm(Fish2 ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Fish2 <- pool(miced_Fish2)
-summary(miced_pool_Fish2)
-summary_miced_pool_Fish2 <- summary(miced_pool_Fish2)
-write.csv(summary_miced_pool_Fish2, "summary_miced_pool_FDSKFish2.csv", row.names = TRUE)
- 
-# Model 4d
-miced_Taro2 <- with(data = d_miced, glm(Taro2  ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Taro2 <- pool(miced_Taro2)
-summary(miced_pool_Taro2) #0.04868054＊
-summary_miced_pool_Taro2 <- summary(miced_pool_Taro2)
-write.csv(summary_miced_pool_Taro2, "summary_miced_pool_FDSKTaro2.csv", row.names = TRUE)
- 
-# Model 4e
-miced_Vegetables2 <- with(data = d_miced, glm(Vegetables2 ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Vegetables2 <- pool(miced_Vegetables2)
-summary(miced_pool_Vegetables2)
-summary_miced_pool_Vegetables2 <- summary(miced_pool_Vegetables2)
-write.csv(summary_miced_pool_Vegetables2, "summary_miced_pool_FDSKVegetables2.csv", row.names = TRUE)
- 
-# Model 4f
-miced_Fruits2 <- with(data = d_miced, glm(Fruits2 ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Fruits2 <- pool(miced_Fruits2)
-summary(miced_pool_Fruits2)
-summary_miced_pool_Fruits2 <- summary(miced_pool_Fruits2)
-write.csv(summary_miced_pool_Fruits2, "summary_miced_pool_FDSKFruits2.csv", row.names = TRUE)
- 
-# Model 4g
-miced_Beans2 <- with(data = d_miced, glm(Beans2 ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Beans2 <- pool(miced_Beans2)
-summary(miced_pool_Beans2) #0.0001332594***
-summary_miced_pool_Beans2 <- summary(miced_pool_Beans2)
-write.csv(summary_miced_pool_Beans2, "summary_miced_pool_FDSKBeans2.csv", row.names = TRUE)
- 
-# Model 4h
-miced_Nuts2 <- with(data = d_miced, glm(Nuts2 ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Nuts2 <- pool(miced_Nuts2)
-summary(miced_pool_Nuts2)
-summary_miced_pool_Nuts2 <- summary(miced_pool_Nuts2)
-write.csv(summary_miced_pool_Nuts2, "summary_miced_pool_FDSKNuts2.csv", row.names = TRUE)
- 
-# Model 4i
-miced_Seaweed2 <- with(data = d_miced, glm(Seaweed2 ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Seaweed2 <- pool(miced_Seaweed2)
-summary(miced_pool_Seaweed2) #0.0004286402***
-summary_miced_pool_Seaweed2 <- summary(miced_pool_Seaweed2)
-write.csv(summary_miced_pool_Seaweed2, "summary_miced_pool_FDSKSeaweed2.csv", row.names = TRUE)
- 
-# Model 4j
-miced_Dairy2 <- with(data = d_miced, glm(Dairy2 ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Dairy2 <- pool(miced_Dairy2)
-summary(miced_pool_Dairy2)
-summary_miced_pool_Dairy2 <- summary(miced_pool_Dairy2)
-write.csv(summary_miced_pool_Dairy2, "summary_miced_pool_FDSKDairy2.csv", row.names = TRUE)
- 
-# Model 4k
-miced_Egg2 <- with(data = d_miced, glm(Egg2 ~ Age + Sex + Edu + Occu + HG.VW, family=binomial))
-miced_pool_Egg2 <- pool(miced_Egg2)
-summary(miced_pool_Egg2)
-summary_miced_pool_Egg2 <- summary(miced_pool_Egg2)
-write.csv(summary_miced_pool_Egg2, "summary_miced_pool_FDSKEgg2.csv", row.names = TRUE)
+print(p_foods_all)
+ggsave("outputs/model_all_foods_plot.pdf", plot = p_foods_all, width = 6, height = 6.5)
