@@ -3,7 +3,7 @@
 #-----------------------------------------------------------------------------------------
 
 #----------------------------------------------
-# STEP 1: Data Setup and Preparation
+# STEP 1 Data setting & A Priori Power Analysis
 #----------------------------------------------
 
 # Set working directory (Please update to your local path)
@@ -15,7 +15,7 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(scales)
-library(purrr)
+library(pwr)
 
 # Load dataset
 d <- read.csv("260726_data_edit_HG_Diet_Health.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
@@ -60,6 +60,19 @@ na_percentage_total <- mean(is.na(d)) * 100; print(na_percentage_total)
 # Create output directory automatically if it does not exist
 if (!dir.exists("outputs")) dir.create("outputs")
 
+# --- A Priori Power Analysis ---
+# Set parameters for multiple linear regression
+f2_val <- 0.15       # Medium effect size (Cohen's f^2)
+u_val <- 6           # Number of predictors (Gardening practice, Garden ownership, and 4 covariates)
+sig_level <- 0.05    # Significance level (alpha)
+target_power <- 0.80 # Target statistical power (80%)
+
+# Calculate degrees of freedom and required sample size
+res <- pwr.f2.test(u = u_val, f2 = f2_val, sig.level = sig_level, power = target_power)
+required_N <- u_val + ceiling(res$v) + 1
+
+# Output result
+cat("Required total sample size N =", required_N, "\n")
 
 #----------------------------------------------
 # STEP 2: Cross-tabulation & Visualizations
