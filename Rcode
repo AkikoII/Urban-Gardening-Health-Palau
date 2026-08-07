@@ -122,8 +122,39 @@ ggplot(d.Garden, aes(x = GardenOwnership, y = Percent, fill = GardeningStatus)) 
   )
 ggsave("outputs/plot_Gardener.pdf", width = 5, height = 3)
 
+# 2. FDSK-11 score distribution (Figure 1b)
+d_clean_fdsk <- d %>% 
+  filter(!is.na(HG.VW), !is.na(FDSKsome)) %>%
+  mutate(
+    HG.VW = factor(HG.VW, levels = c(0, 1), labels = c("Non-gardener", "Gardener")),
+    FDSKsome = factor(FDSKsome, levels = as.character(5:11))
+  )
 
-# 2. Body Mass Index (BMI) categories (Figure 1b)
+plot_data_fdsk <- d_clean_fdsk %>%
+  count(HG.VW, FDSKsome) %>%
+  group_by(HG.VW) %>%
+  mutate(proportion = n / sum(n), label = scales::percent(proportion, accuracy = 0.1))
+
+custom_colors_fdsk <- c("5" = "#08306b", "6" = "#2171b5", "7" = "#4eb3d3", "8" = "#a6d96a", "9" = "#d9ef8b", "10" = "#f9d548", "11" = "#f3bc49")
+
+ggplot(plot_data_fdsk, aes(x = HG.VW, y = proportion, fill = FDSKsome)) +
+  geom_bar(stat = "identity", position = "stack", width = 0.8, color = "white") +
+  geom_text(aes(label = label), position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  scale_fill_manual(values = custom_colors_fdsk) +
+  labs(x = "", y = "", fill = "FDSK-11 Score") +
+  theme_minimal() +
+  theme(
+    legend.position = "right", legend.text = element_text(size = 12),
+    legend.key.width = unit(1.5, "cm"), legend.title = element_text(size = 12),
+    axis.text.x = element_text(size = 13, color = "black"), axis.text.y = element_text(size = 13),
+    axis.title = element_text(size = 13), plot.title = element_text(size = 13, hjust = 0.5),
+    panel.background = element_rect(fill = "grey95", color = NA),
+    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
+  )
+ggsave("outputs/plot_FDSK.pdf", width = 5, height = 3)
+
+# 3. Body Mass Index (BMI) categories (Figure 1c)
 d_clean_bmi <- d %>% 
   filter(!is.na(HG.VW), !is.na(BMI)) %>%
   mutate(
@@ -156,38 +187,6 @@ ggplot(plot_data_bmi, aes(x = HG.VW, y = proportion, fill = BMICategory)) +
   )
 ggsave("outputs/plot_BMI.pdf", width = 5, height = 3)
 
-
-# 3. FDSK-11 score distribution (Figure 1c)
-d_clean_fdsk <- d %>% 
-  filter(!is.na(HG.VW), !is.na(FDSKsome)) %>%
-  mutate(
-    HG.VW = factor(HG.VW, levels = c(0, 1), labels = c("Non-gardener", "Gardener")),
-    FDSKsome = factor(FDSKsome, levels = as.character(5:11))
-  )
-
-plot_data_fdsk <- d_clean_fdsk %>%
-  count(HG.VW, FDSKsome) %>%
-  group_by(HG.VW) %>%
-  mutate(proportion = n / sum(n), label = scales::percent(proportion, accuracy = 0.1))
-
-custom_colors_fdsk <- c("5" = "#08306b", "6" = "#2171b5", "7" = "#4eb3d3", "8" = "#a6d96a", "9" = "#d9ef8b", "10" = "#f9d548", "11" = "#f3bc49")
-
-ggplot(plot_data_fdsk, aes(x = HG.VW, y = proportion, fill = FDSKsome)) +
-  geom_bar(stat = "identity", position = "stack", width = 0.8, color = "white") +
-  geom_text(aes(label = label), position = position_stack(vjust = 0.5), color = "white", size = 3) +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
-  scale_fill_manual(values = custom_colors_fdsk) +
-  labs(x = "", y = "", fill = "FDSK-11 Score") +
-  theme_minimal() +
-  theme(
-    legend.position = "right", legend.text = element_text(size = 12),
-    legend.key.width = unit(1.5, "cm"), legend.title = element_text(size = 12),
-    axis.text.x = element_text(size = 13, color = "black"), axis.text.y = element_text(size = 13),
-    axis.title = element_text(size = 13), plot.title = element_text(size = 13, hjust = 0.5),
-    panel.background = element_rect(fill = "grey95", color = NA),
-    panel.grid.major = element_line(color = "white"), panel.grid.minor = element_line(color = "white")
-  )
-ggsave("outputs/plot_FDSK.pdf", width = 5, height = 3)
 
 
 # 4. Self-reported health status (Figure 1d)
