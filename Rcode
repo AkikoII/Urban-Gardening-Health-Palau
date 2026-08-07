@@ -61,18 +61,34 @@ na_percentage_total <- mean(is.na(d)) * 100; print(na_percentage_total)
 if (!dir.exists("outputs")) dir.create("outputs")
 
 # --- A Priori Power Analysis ---
-# Set parameters for multiple linear regression
-f2_val <- 0.15       # Medium effect size (Cohen's f^2)
-u_val <- 6           # Number of predictors (Gardening practice, Garden ownership, and 4 covariates)
-sig_level <- 0.05    # Significance level (alpha)
-target_power <- 0.80 # Target statistical power (80%)
+f2_val <- 0.15
+u_val <- 6
+sig_level <- 0.05
+target_power <- 0.80
 
-# Calculate degrees of freedom and required sample size
-res <- pwr.f2.test(u = u_val, f2 = f2_val, sig.level = sig_level, power = target_power)
-required_N <- u_val + ceiling(res$v) + 1
+res_lm <- pwr.f2.test(u = u_val, f2 = f2_val, sig.level = sig_level, power = target_power)
+required_N_lm <- u_val + ceiling(res_lm$v) + 1
 
-# Output result
-cat("Required total sample size N =", required_N, "\n")
+# 2. Binary Logistic Regression (for Self-Reported Health model)
+OR_val <- 2.5
+p1_val <- 0.52
+p2_val <- (OR_val * p1_val) / (1 - p1_val + OR_val * p1_val)
+h_val <- ES.h(p1 = p1_val, p2 = p2_val)
+res_logi <- pwr.2p.test(h = h_val, sig.level = sig_level, power = target_power)
+
+n_per_group <- ceiling(res_logi$n)  
+required_N_logi <- n_per_group * 2
+
+required_N_overall <- max(required_N_lm, required_N_logi)
+
+cat("===================================================\n")
+cat(" A Priori Power Analysis Results (alpha = 0.05, power = 0.80)\n")
+cat("===================================================\n")
+cat(" 1. Multiple Linear Regression (f^2 = 0.15, u = 6): Required N =", required_N_lm, "\n")
+cat(" 2. Binary Logistic Regression (OR = 2.5, p1 = 0.52): Required N =", required_N_logi, "\n")
+cat(" Overall minimum required N (larger of the two) =", required_N_overall, "\n")
+cat(" Achieved Sample Size in Study: N =", nrow(d), "\n")
+cat("===================================================\n")
 
 #----------------------------------------------
 # STEP 2: Cross-tabulation & Visualizations
